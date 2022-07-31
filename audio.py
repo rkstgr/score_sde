@@ -73,6 +73,7 @@ def load_audio(samples, sampling_rate=22050, remove_silence=True, duration=10):
          .map(take_first_few_seconds)
          ).to_list()
 
+    print("load", type(x))
     return {
         "audio_array": x
     }
@@ -94,9 +95,10 @@ def create_spectrogram(samples, n_fft=1024, hop_length=512):
         differentiated in the last dimension
     """
     Y = np.stack(samples["audio_array"], axis=0)
-    print(Y.shape)
     X = librosa.stft(Y, n_fft=n_fft, hop_length=hop_length)
-    X = np.stack([X.real, X.imag], axis=3)
+    X = np.stack([X.real, X.imag], axis=3).astype("float32")
+
+    print("spec", X.shape, X.dtype)
     return {
         "audio_spectrogram": X
     }
@@ -120,9 +122,16 @@ def normalize_spectrogram(samples, normalizers):
     X_real = rearrange(X_real, "(n t) f -> n f t", n=X.shape[0])
     X_imag = rearrange(X_imag, "(n t) f -> n f t", n=X.shape[0])
 
+    X = np.stack([X_real, X_imag], axis=3).astype("float32")
+
+    print("norm", X.shape, X.dtype)
     return {
-        "audio_spectrogram": np.stack([X_real, X_imag], axis=3).astype("float32")
+        "audio_spectrogram": X
     }
+
+
+def invert_sample(X):
+    raise NotImplementedError
 
 
 if __name__ == '__main__':
@@ -144,18 +153,16 @@ if __name__ == '__main__':
         batch_size=2,
         num_proc=2
     )
-
+    n_fft = config["n_fft"]
     subset = (mtg
               .filter(filter_func, **map_params)
               .cast_column("audio", datasets.Audio(sampling_rate=sr, decode=False))
               .map(partial(load_audio, sampling_rate=sr, remove_silence=True, duration=10), **map_params)
               .map(partial(create_spectrogram, n_fft=config["n_fft"], hop_length=config["hop_length"]), **map_params)
               .map(partial(normalize_spectrogram, normalizers=normalizers), **map_params)
-              .remove_columns("audio")
-              .cast_column("audio_spectrogram",
-                           datasets.Array3D((config["n_fft"] // 2 + 1, None, 2), "float64"))
+              .cast_column("audio_spectrogram", datasets.Array3D((n_fft // 2 + 1, 431, 2), "float32"))
+              .rename_column("audio_spectrogram", "image")
               )
 
-    print(subset["audio_spectrogram"][0])
-    #train_df = iter(subset.to_tf_dataset(batch_size=2, columns=["id", "image"]))
-    #print(next(train_df))
+    train_df = subset.to_tf_dataset(batch_size=2, columns=["id", "image"])
+    print(next(iter(train_df)))
