@@ -130,13 +130,25 @@ def normalize_spectrogram(samples, normalizers):
     }
 
 
-def invert_sample(X):
-    raise NotImplementedError
+def invert_normalization(samples, normalizers):
+    Xs_real = normalizers["real"].inverse_transform(rearrange(samples[:, :, :, 0], "n f t -> (n t) f"))
+    Xs_imag = normalizers["imag"].inverse_transform(rearrange(samples[:, :, :, 1], "n f t -> (n t) f"))
+
+    Xs_real = rearrange(Xs_real, "(n t) f -> n f t", n=samples.shape[0])
+    Xs_imag = rearrange(Xs_imag, "(n t) f -> n f t", n=samples.shape[0])
+    return np.stack([Xs_real, Xs_imag], axis=3)
+
+
+def invert_spectrogram(samples, n_fft, hop_length):
+    samples = samples[:, :, :, 0] + 1j * samples[:, :, :, 1]
+    Ys = librosa.istft(samples, n_fft=n_fft, hop_length=hop_length)
+    return Ys
 
 
 if __name__ == '__main__':
     import datasets
     import warnings
+    import soundfile
 
     warnings.filterwarnings('ignore')
 
@@ -165,4 +177,11 @@ if __name__ == '__main__':
               )
 
     train_df = subset.to_tf_dataset(batch_size=2, columns=["id", "image"])
-    print(next(iter(train_df)))
+    samples = iter(train_df).__next__()
+    print(samples)
+    (seq([samples])
+     .map(lambda x: x["image"])
+     .map(partial(invert_normalization, normalizers=normalizers))
+     .map(partial(invert_spectrogram, n_fft=n_fft, hop_length=config["hop_length"]))
+     .for_each(lambda x: soundfile.write("batch.wav", rearrange(x, "b t -> (b t)"), samplerate=sr))
+     )
