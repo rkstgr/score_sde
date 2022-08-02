@@ -90,6 +90,15 @@ def create_spectrogram(samples, n_fft=1024, hop_length=512):
     }
 
 
+def crop_spectrogram(samples):
+    X = np.asarray(samples["audio_spectrogram"])
+    print("crop", X.shape)
+    return {
+        # X = (batch, freq, time, channel)
+        "audio_spectrogram": X[:, :-1, :, :]
+    }
+
+
 def normalize_spectrogram(samples, normalizers):
     """
 

@@ -536,7 +536,7 @@ class Downsample(nn.Module):
       x = ddpm_conv3x3(x, C, stride=2)
     else:
       x = nn.avg_pool(x, window_shape=(2, 2), strides=(2, 2), padding='SAME')
-    assert x.shape == (B, H // 2, W // 2, C)
+    assert x.shape == (B, H // 2, W // 2, C), f"Shape {x.shape} should be {(B, H // 2, W // 2, C)}"
     return x
 
 
