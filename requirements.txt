@@ -7,5 +7,11 @@ tensorflow-addons==0.12.0
 tensorboard==2.4.0
 absl-py==0.10.0
 flax==0.3.1
-jax==0.2.8
-jaxlib==0.1.59
+jax
+jaxlib
+datasets
+einops
+soundfile
+librosa
+pyfunctional
+scipy
