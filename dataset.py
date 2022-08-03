@@ -160,7 +160,6 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
     elif config.data.dataset == "MTG":
 
         normalizers = load_normalizers(config.data.normalizers_path)
-        batch_size = batch_size
 
         def prepare_dataset(ds: datasets.Dataset, batch_size: int) -> datasets.Dataset:
 
@@ -168,6 +167,7 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
             n_fft = config.data.n_fft
             hop_length = config.data.hop_length
             duration = config.data.duration
+            time_bins = int(np.ceil(sr * duration / hop_length))
 
             map_params = dict(
                 batched=True,
@@ -183,26 +183,28 @@ def get_dataset(config, additional_dim=None, uniform_dequantization=False, evalu
 
                 return dict(image=img, label=d.get('label', None))
 
-            ds = (ds
-                  .filter(partial(filter_func, genre=config.data.genre), **map_params)
-                  .cast_column("audio", datasets.Audio(sampling_rate=sr, decode=False))
-                  .map(partial(load_audio, sampling_rate=sr, remove_silence=True, duration=duration),
-                       **map_params)
-                  .map(partial(create_spectrogram, n_fft=n_fft, hop_length=hop_length),
-                       **map_params)
-                  .map(crop_spectrogram, **map_params)
-                  .map(partial(normalize_spectrogram, normalizers=normalizers), **map_params)
-                  .cast_column("audio_spectrogram",
-                               datasets.Array3D((n_fft // 2, n_fft // 2, config.data.num_channels), "float32"))
-                  .rename_column("audio_spectrogram", "image")
-                  .to_tf_dataset(batch_size=batch_size, columns=["id", "image"])
-                  )
-
+            hf_ds = (ds
+                     .filter(partial(filter_func, genre=config.data.genre), **map_params)
+                     .cast_column("audio", datasets.Audio(sampling_rate=sr, decode=False))
+                     .map(partial(load_audio, sampling_rate=sr, remove_silence=True, duration=duration),
+                          **map_params)
+                     .map(partial(create_spectrogram, n_fft=n_fft, hop_length=hop_length),
+                          **map_params)
+                     .map(crop_spectrogram,
+                          **map_params)
+                     .map(partial(normalize_spectrogram, normalizers=normalizers),
+                          **map_params)
+                     .cast_column("audio_spectrogram",
+                                  datasets.Array3D((n_fft // 2, time_bins, config.data.num_channels), "float32"))
+                     .rename_column("audio_spectrogram", "image")
+                     )
+            ds = hf_ds.to_tf_dataset(batch_size=per_device_batch_size, columns=["id", "image"],
+                                     drop_remainder=True)
             ds = ds.repeat(count=num_epochs)
             ds = ds.shuffle(shuffle_buffer_size)
             ds = ds.map(preprocess_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            for batch_size in reversed(batch_dims):
-                ds = ds.batch(batch_size, drop_remainder=True)
+            for bs in reversed(batch_dims[:-1]):
+                ds = ds.batch(bs, drop_remainder=True)
             return ds.prefetch(prefetch_size)
 
         train_hf = datasets.load_dataset(path=config.data.dataset_path,

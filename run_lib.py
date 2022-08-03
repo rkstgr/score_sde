@@ -137,8 +137,18 @@ def train(config, workdir):
 
     # Building sampling functions
     if config.training.snapshot_sampling:
-        sampling_shape = (config.training.batch_size // jax.local_device_count(), config.data.image_size,
-                          config.data.image_size, config.data.num_channels)
+        if config.data.dataset == "MTG":
+            time_bins = int(np.ceil(config.data.sampling_rate * config.data.duration / config.data.hop_length))
+            sampling_shape = (config.training.batch_size // jax.local_device_count(),
+                              config.data.n_fft // 2,
+                              time_bins,
+                              config.data.num_channels)
+        else:
+            sampling_shape = (config.training.batch_size // jax.local_device_count(),
+                              config.data.image_size,
+                              config.data.image_size,
+                              config.data.num_channels)
+
         sampling_fn = sampling.get_sampling_fn(config, sde, score_model, sampling_shape, inverse_scaler, sampling_eps)
 
     # Replicate the training state to run on multiple devices
@@ -434,7 +444,7 @@ def evaluate(config,
                     bpds.extend(bpd)
                     logging.info(
                         "ckpt: %d, repeat: %d, batch: %d, mean bpd: %6f" % (
-                        ckpt, repeat, batch_id, jnp.mean(jnp.asarray(bpds))))
+                            ckpt, repeat, batch_id, jnp.mean(jnp.asarray(bpds))))
                     bpd_round_id = batch_id + len(ds_bpd) * repeat
                     # Save bits/dim to disk or Google Cloud Storage
                     with tf.io.gfile.GFile(os.path.join(eval_dir,
