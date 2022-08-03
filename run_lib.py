@@ -333,9 +333,16 @@ def evaluate(config,
 
     # Build the sampling function when sampling is enabled
     if config.eval.enable_sampling:
-        sampling_shape = (config.eval.batch_size // jax.local_device_count(),
-                          config.data.image_size, config.data.image_size,
-                          config.data.num_channels)
+        if config.data.dataset == "MTG":
+            time_bins = int(np.ceil(config.data.sampling_rate * config.data.duration / config.data.hop_length))
+            sampling_shape = (config.training.batch_size // jax.local_device_count(),
+                              config.data.n_fft // 2,
+                              time_bins,
+                              config.data.num_channels)
+        else:
+            sampling_shape = (config.eval.batch_size // jax.local_device_count(),
+                              config.data.image_size, config.data.image_size,
+                              config.data.num_channels)
         sampling_fn = sampling.get_sampling_fn(config, sde, score_model, sampling_shape, inverse_scaler, sampling_eps)
 
     # Create different random states for different hosts in a multi-host environment (e.g., TPU pods)
